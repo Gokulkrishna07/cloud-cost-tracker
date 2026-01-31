@@ -29,7 +29,7 @@ def save_uploaded_file(uploaded_file):
 
 # Sidebar
 st.sidebar.header("Operations")
-option = st.sidebar.radio("Select Action", ["Upload Data", "Train Model", "View Metrics"])
+option = st.sidebar.radio("Select Action", ["Upload Data", "Train Model", "Make Prediction", "View Metrics"])
 
 # Upload Data Section
 if option == "Upload Data":
@@ -44,6 +44,33 @@ if option == "Upload Data":
             if success:
                 st.success("File saved successfully to `data/raw/cloud_cost_data.csv`")
                 st.dataframe(result.head())
+                
+                # Send CSV upload notification
+                try:
+                    from notifications.telegram import TelegramNotifier
+                    notifier = TelegramNotifier()
+                    
+                    # Calculate summary stats
+                    total_cost = result.get('Total costs($)', 0).sum() if 'Total costs($)' in result.columns else 0
+                    num_records = len(result)
+                    date_range = f"{result.iloc[0, 0]} to {result.iloc[-1, 0]}" if num_records > 0 else "Unknown"
+                    
+                    message = f"""
+📊 <b>NEW CSV DATA UPLOADED</b>
+
+📁 <b>File:</b> {uploaded_file.name}
+📈 <b>Records:</b> {num_records}
+📅 <b>Date Range:</b> {date_range}
+💰 <b>Total Cost:</b> ${total_cost:.2f}
+
+🕐 <b>Uploaded:</b> {pd.Timestamp.now().strftime('%Y-%m-%d %H:%M:%S')}
+✅ <b>Status:</b> Ready for training
+                    """
+                    
+                    notifier.send_message(message)
+                    st.success("📱 Notification sent to Telegram!")
+                except Exception as e:
+                    st.warning(f"Notification failed: {e}")
             else:
                 st.error(f"Error saving file: {result}")
 
@@ -140,6 +167,70 @@ elif option == "Train Model":
                     data_path = "data/raw/cloud_cost_data.csv"
                     st.write(f"Looking for data at: {os.path.abspath(data_path)}")
                     st.write(f"Data file exists: {os.path.exists(data_path)}")
+# Make Prediction Section
+elif option == "Make Prediction":
+    st.header("Cost Prediction")
+    st.info("Enter your AWS usage metrics to get cost prediction and alerts.")
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        ec2_hours = st.number_input("EC2 Hours", min_value=0.0, value=100.0)
+        storage_gb = st.number_input("Storage (GB)", min_value=0.0, value=500.0)
+        data_transfer_gb = st.number_input("Data Transfer (GB)", min_value=0.0, value=50.0)
+    
+    with col2:
+        rds_usage = st.number_input("RDS Usage", min_value=0.0, value=10.0)
+        lambda_invocations = st.number_input("Lambda Invocations", min_value=0, value=1000000)
+        budget = st.number_input("Daily Budget ($)", min_value=0.0, value=200.0)
+    
+    if st.button("Get Prediction"):
+        try:
+            import requests
+            
+            # Make API call
+            payload = {
+                "ec2_hours": ec2_hours,
+                "storage_gb": storage_gb,
+                "data_transfer_gb": data_transfer_gb,
+                "rds_usage": rds_usage,
+                "lambda_invocations": int(lambda_invocations),
+                "budget": budget
+            }
+            
+            response = requests.post("http://localhost:8000/predict", json=payload)
+            
+            if response.status_code == 200:
+                result = response.json()
+                
+                # Display results
+                col1, col2, col3 = st.columns(3)
+                
+                with col1:
+                    st.metric("Predicted Cost", f"${result['predicted_cost']:.2f}")
+                
+                with col2:
+                    st.metric("Budget", f"${result['budget']:.2f}")
+                
+                with col3:
+                    risk_color = "🔴" if result['risk_level'] == "High" else "🟡" if result['risk_level'] == "Medium" else "🟢"
+                    st.metric("Risk Level", f"{risk_color} {result['risk_level']}")
+                
+                if result['overrun']:
+                    st.error(f"⚠️ Budget Overrun Alert! Predicted cost exceeds budget by ${result['predicted_cost'] - result['budget']:.2f}")
+                else:
+                    st.success(f"✅ Within Budget! You have ${result['budget'] - result['predicted_cost']:.2f} remaining.")
+                
+                # Show notification status
+                if result['overrun'] or result['risk_level'] == "High":
+                    st.info("📱 Alert notification sent to Telegram!")
+                
+            else:
+                st.error(f"Prediction failed: {response.text}")
+                
+        except Exception as e:
+            st.error(f"Error making prediction: {e}")
+
 # Metrics Section
 elif option == "View Metrics":
     st.header("Latest Model Metrics")
