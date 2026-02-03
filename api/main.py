@@ -7,11 +7,13 @@ from prometheus_client import make_asgi_app, Counter, Histogram, Gauge
 import time
 from datetime import datetime
 from notifications.telegram import TelegramNotifier
+from database.db_manager import DatabaseManager
 
 app = FastAPI(title="Cloud Cost Prediction API")
 
-# Initialize Telegram notifier
+# Initialize Telegram notifier and database
 notifier = TelegramNotifier()
+db = DatabaseManager()
 
 # Prometheus Metrics
 PREDICTION_REQUESTS = Counter('prediction_requests_total', 'Total prediction requests')
@@ -33,6 +35,10 @@ model = None
 def load_model():
     global model
     try:
+        # Initialize database tables
+        db.create_tables()
+        print("Database tables initialized")
+        
         # Try to find the latest run in mlruns
         # This is a bit hacky for local dev, usually we pass run_id or model_uri env var
         mlflow.set_tracking_uri("file:./mlruns")
@@ -142,8 +148,61 @@ async def predict(input_data: CloudUsageInput):
         "timestamp": datetime.now().isoformat()
     }
     
+    # Save prediction to database
+    prediction_data = {
+        'ec2_hours': input_data.ec2_hours,
+        'storage_gb': input_data.storage_gb,
+        'data_transfer_gb': input_data.data_transfer_gb,
+        'rds_usage': input_data.rds_usage,
+        'lambda_invocations': input_data.lambda_invocations,
+        'budget': input_data.budget,
+        'predicted_cost': predicted_cost,
+        'risk_level': risk,
+        'overrun': overrun,
+        'model_version': 'latest'
+    }
+    
+    try:
+        db.save_prediction(prediction_data)
+        print("Prediction saved to database")
+    except Exception as e:
+        print(f"Failed to save prediction: {e}")
+    
     # Send Telegram notification for high risk or overrun
     if overrun or risk == "High":
         notifier.send_cost_alert(result)
         
     return result
+
+@app.post("/add_training_data")
+async def add_training_data(data: dict):
+    """Add actual cost data for training"""
+    try:
+        db.add_training_data(data)
+        return {"message": "Training data added successfully"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to add training data: {e}")
+
+@app.post("/retrain")
+async def retrain_model():
+    """Retrain model with latest data from database"""
+    try:
+        from training.train_from_db import train_model_from_db
+        train_model_from_db()
+        
+        # Reload the model
+        global model
+        mlflow.set_tracking_uri("file:./mlruns")
+        client = mlflow.MlflowClient()
+        experiment = client.get_experiment_by_name("cloud_cost_prediction")
+        if experiment:
+            runs = client.search_runs(experiment.experiment_id, order_by=["start_time DESC"], max_results=1)
+            if runs:
+                run_id = runs[0].info.run_id
+                model_uri = f"runs:/{run_id}/model"
+                model = mlflow.sklearn.load_model(model_uri)
+                print(f"Model reloaded from {model_uri}")
+        
+        return {"message": "Model retrained successfully"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Retraining failed: {e}")

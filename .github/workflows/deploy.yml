@@ -38,7 +38,15 @@ jobs:
           
           # Install dependencies
           sudo apt-get update
-          sudo apt-get install -y python3-pip python3-venv net-tools
+          sudo apt-get install -y python3-pip python3-venv net-tools postgresql postgresql-contrib
+          
+          # Setup PostgreSQL
+          sudo systemctl start postgresql
+          sudo systemctl enable postgresql
+          
+          # Create database (ignore errors if already exists)
+          sudo -u postgres createdb cloud_cost_db || true
+          sudo -u postgres psql -c "ALTER USER postgres PASSWORD 'password';" || true
           
           # Create virtual environment
           python3 -m venv venv
