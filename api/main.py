@@ -1,6 +1,6 @@
 import logging
+from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
-from typing import AsyncGenerator
 
 from fastapi import FastAPI, HTTPException
 
@@ -63,10 +63,10 @@ def predict(customer: CustomerData) -> PredictionResponse:
         raise HTTPException(status_code=500, detail="Prediction failed") from exc
 
     return PredictionResponse(
-        churn_prediction=int(result["churn_prediction"]),  # type: ignore[arg-type]
-        churn_probability=float(result["churn_probability"]),  # type: ignore[arg-type]
-        risk_level=get_risk_level(float(result["churn_probability"])),  # type: ignore[arg-type]
-        confidence=float(result["confidence"]),  # type: ignore[arg-type]
+        churn_prediction=int(result["churn_prediction"]),
+        churn_probability=float(result["churn_probability"]),
+        risk_level=get_risk_level(float(result["churn_probability"])),
+        confidence=float(result["confidence"]),
         model_type=str(model.metadata.get("model_type", "unknown")),
     )
 
@@ -85,10 +85,10 @@ def predict_batch(request: BatchPredictionRequest) -> BatchPredictionResponse:
             result = model.predict_single(customer.model_dump())
             predictions.append(
                 PredictionResponse(
-                    churn_prediction=int(result["churn_prediction"]),  # type: ignore[arg-type]
-                    churn_probability=float(result["churn_probability"]),  # type: ignore[arg-type]
-                    risk_level=get_risk_level(float(result["churn_probability"])),  # type: ignore[arg-type]
-                    confidence=float(result["confidence"]),  # type: ignore[arg-type]
+                    churn_prediction=int(result["churn_prediction"]),
+                    churn_probability=float(result["churn_probability"]),
+                    risk_level=get_risk_level(float(result["churn_probability"])),
+                    confidence=float(result["confidence"]),
                     model_type=str(model.metadata.get("model_type", "unknown")),
                 )
             )

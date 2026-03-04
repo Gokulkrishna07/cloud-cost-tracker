@@ -3,9 +3,11 @@ import logging
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 import pandas as pd
+from numpy.typing import NDArray  # noqa: F401
 from sklearn.metrics import (
     average_precision_score,
     confusion_matrix,
@@ -41,14 +43,14 @@ class EvaluationMetrics:
 
 
 class ModelEvaluator:
-    def __init__(self, model: object, model_name: str = "Model") -> None:
+    def __init__(self, model: Any, model_name: str = "Model") -> None:
         self.model = model
         self.model_name = model_name
         self.metrics: EvaluationMetrics | None = None
 
     def evaluate(self, X_test: pd.DataFrame, y_test: pd.Series) -> EvaluationMetrics:
-        y_pred: np.ndarray = self.model.predict(X_test)  # type: ignore[attr-defined]
-        y_prob: np.ndarray = self.model.predict_proba(X_test)[:, 1]  # type: ignore[attr-defined]
+        y_pred: NDArray[np.int_] = self.model.predict(X_test)
+        y_prob: NDArray[np.float64] = self.model.predict_proba(X_test)[:, 1]
         cm = confusion_matrix(y_test, y_pred)
         tn, fp, fn, tp = cm.ravel()
 
@@ -71,11 +73,9 @@ class ModelEvaluator:
     def find_optimal_threshold(
         self, X_test: pd.DataFrame, y_test: pd.Series
     ) -> tuple[float, float]:
-        y_prob: np.ndarray = self.model.predict_proba(X_test)[:, 1]  # type: ignore[attr-defined]
+        y_prob: NDArray[np.float64] = self.model.predict_proba(X_test)[:, 1]
         thresholds = np.arange(0.1, 0.9, 0.02)
-        f1_scores = [
-            f1_score(y_test, (y_prob >= t).astype(int)) for t in thresholds
-        ]
+        f1_scores = [f1_score(y_test, (y_prob >= t).astype(int)) for t in thresholds]
         optimal_idx = int(np.argmax(f1_scores))
         optimal_threshold = float(thresholds[optimal_idx])
         optimal_f1 = float(f1_scores[optimal_idx])
@@ -89,9 +89,10 @@ class ModelEvaluator:
         out_path = Path(output_dir) / f"{self.model_name.replace(' ', '_')}_{timestamp}"
         out_path.mkdir(parents=True, exist_ok=True)
         metrics_path = out_path / "metrics.json"
+        payload = {
+            **self.metrics.to_loggable_dict(),
+            "confusion_matrix": self.metrics.confusion_matrix,
+        }
         with open(metrics_path, "w") as f:
-            json.dump(
-                {**self.metrics.to_loggable_dict(), "confusion_matrix": self.metrics.confusion_matrix},
-                f, indent=4,
-            )
+            json.dump(payload, f, indent=4)
         logger.info("Metrics saved: path=%s", metrics_path)

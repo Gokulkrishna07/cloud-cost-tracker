@@ -41,12 +41,16 @@ def preprocessor() -> TelcoPreprocessor:
     return TelcoPreprocessor()
 
 
-def test_clean_data_drops_customer_id(preprocessor: TelcoPreprocessor, raw_df: pd.DataFrame) -> None:
+def test_clean_data_drops_customer_id(
+    preprocessor: TelcoPreprocessor, raw_df: pd.DataFrame
+) -> None:
     cleaned = preprocessor.clean_data(raw_df)
     assert "customerID" not in cleaned.columns
 
 
-def test_clean_data_fixes_total_charges(preprocessor: TelcoPreprocessor, raw_df: pd.DataFrame) -> None:
+def test_clean_data_fixes_total_charges(
+    preprocessor: TelcoPreprocessor, raw_df: pd.DataFrame
+) -> None:
     cleaned = preprocessor.clean_data(raw_df)
     assert cleaned["TotalCharges"].isnull().sum() == 0
     assert cleaned["TotalCharges"].dtype in (np.float64, np.float32)

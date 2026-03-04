@@ -1,5 +1,6 @@
 import logging
 from pathlib import Path
+from typing import Any
 
 import joblib
 import mlflow
@@ -28,8 +29,8 @@ class ChurnModelTrainer:
         experiment_name: str = "churn-prediction",
     ) -> None:
         self.random_state = random_state
-        self.models: dict[str, object] = {}
-        self.results: dict[str, dict[str, object]] = {}
+        self.models: dict[str, Any] = {}
+        self.results: dict[str, dict[str, Any]] = {}
         self.best_model: object = None
         self.best_model_name: str | None = None
 
@@ -38,7 +39,7 @@ class ChurnModelTrainer:
             mlflow.set_experiment(experiment_name)
             logger.info("MLflow tracking URI: %s", mlflow_tracking_uri)
 
-    def get_models(self) -> dict[str, object]:
+    def get_models(self) -> dict[str, Any]:
         return {
             "Logistic Regression": LogisticRegression(
                 max_iter=1000, random_state=self.random_state, class_weight="balanced"
@@ -94,10 +95,10 @@ class ChurnModelTrainer:
         return X_resampled, y_resampled
 
     def evaluate_model(
-        self, model: object, X_test: pd.DataFrame, y_test: pd.Series, model_name: str
-    ) -> dict[str, object]:
-        y_pred = model.predict(X_test)  # type: ignore[attr-defined]
-        y_prob = model.predict_proba(X_test)[:, 1]  # type: ignore[attr-defined]
+        self, model: Any, X_test: pd.DataFrame, y_test: pd.Series, model_name: str
+    ) -> dict[str, Any]:
+        y_pred = model.predict(X_test)
+        y_prob = model.predict_proba(X_test)[:, 1]
         metrics: dict[str, object] = {
             "model_name": model_name,
             "precision": float(precision_score(y_test, y_pred)),
@@ -111,11 +112,11 @@ class ChurnModelTrainer:
         return metrics
 
     def cross_validate_model(
-        self, model: object, X: pd.DataFrame, y: pd.Series, cv: int = 5
+        self, model: Any, X: pd.DataFrame, y: pd.Series, cv: int = 5
     ) -> dict[str, float]:
         skf = StratifiedKFold(n_splits=cv, shuffle=True, random_state=self.random_state)
-        scores: dict[str, np.ndarray] = {
-            metric: cross_val_score(model, X, y, cv=skf, scoring=metric)  # type: ignore[arg-type]
+        scores: dict[str, Any] = {
+            metric: cross_val_score(model, X, y, cv=skf, scoring=metric)
             for metric in ("f1", "roc_auc")
         }
         return {
@@ -144,7 +145,7 @@ class ChurnModelTrainer:
                     mlflow.log_param("model_type", model_name)
                     mlflow.log_param("imbalance_method", imbalance_method)
                     mlflow.log_param("random_state", self.random_state)
-                    model.fit(X_train_rs, y_train_rs)  # type: ignore[union-attr]
+                    model.fit(X_train_rs, y_train_rs)
                     self.models[model_name] = model
                     metrics = self.evaluate_model(model, X_test, y_test, model_name)
                     mlflow.log_metrics({
@@ -165,7 +166,7 @@ class ChurnModelTrainer:
                         logger.warning("Could not log model artifact: %s", exc)
                     self.results[model_name] = metrics
             else:
-                model.fit(X_train_rs, y_train_rs)  # type: ignore[union-attr]
+                model.fit(X_train_rs, y_train_rs)
                 self.models[model_name] = model
                 metrics = self.evaluate_model(model, X_test, y_test, model_name)
                 if cv:
@@ -177,7 +178,7 @@ class ChurnModelTrainer:
     def _select_best_model(self) -> None:
         best_f1 = 0.0
         for model_name, metrics in self.results.items():
-            f1 = float(metrics["f1_score"])  # type: ignore[arg-type]
+            f1 = float(metrics["f1_score"])
             if f1 > best_f1:
                 best_f1 = f1
                 self.best_model_name = model_name
@@ -196,18 +197,20 @@ class ChurnModelTrainer:
             }
             if "cv_results" in metrics:
                 cv = metrics["cv_results"]
-                row["CV_F1_Mean"] = cv["f1_mean"]  # type: ignore[index]
-                row["CV_ROC_AUC_Mean"] = cv["roc_auc_mean"]  # type: ignore[index]
+                row["CV_F1_Mean"] = cv["f1_mean"]
+                row["CV_ROC_AUC_Mean"] = cv["roc_auc_mean"]
             rows.append(row)
         return pd.DataFrame(rows).sort_values("F1-Score", ascending=False)
 
     def save_model(self, model_name: str | None = None, path: str = "models") -> None:
         if model_name is None:
+            if self.best_model_name is None:
+                raise ValueError("No model trained yet.")
             model_name = self.best_model_name
             model = self.best_model
         else:
             model = self.models[model_name]
         Path(path).mkdir(parents=True, exist_ok=True)
-        safe_name = model_name.replace(" ", "_").lower()  # type: ignore[union-attr]
+        safe_name = model_name.replace(" ", "_").lower()
         joblib.dump(model, Path(path) / f"{safe_name}.pkl")
         logger.info("Saved model: %s", safe_name)

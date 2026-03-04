@@ -13,7 +13,7 @@ def get_model() -> ProductionChurnModel:
         "MODEL_PATH", "models/production/churn_model_production.pkl"
     )
     model = ProductionChurnModel.load(model_path)
-    logger.info("Production model loaded: path=%s, type=%s", model_path, model.metadata.get("model_type"))
+    logger.info("Production model loaded: path=%s, type=%s", model_path, model.metadata.get("model_type"))  # noqa: E501
     return model
 
 

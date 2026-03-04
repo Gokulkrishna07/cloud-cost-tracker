@@ -1,5 +1,6 @@
 import logging
 from pathlib import Path
+from typing import Any
 
 import joblib
 import pandas as pd
@@ -107,12 +108,12 @@ class HyperparameterTuner:
 
         if search_type == "grid":
             search: GridSearchCV | RandomizedSearchCV = GridSearchCV(
-                base_model, param_grid, cv=cv_strategy,  # type: ignore[arg-type]
+                base_model, param_grid, cv=cv_strategy,
                 scoring=scorer, n_jobs=self.n_jobs, verbose=1,
             )
         else:
             search = RandomizedSearchCV(
-                base_model, param_grid, n_iter=n_iter,  # type: ignore[arg-type]
+                base_model, param_grid, n_iter=n_iter,
                 cv=cv_strategy, scoring=scorer, n_jobs=self.n_jobs,
                 verbose=1, random_state=self.random_state,
             )

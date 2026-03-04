@@ -2,10 +2,12 @@ import json
 import logging
 from datetime import datetime
 from pathlib import Path
+from typing import Any
 
 import joblib
 import numpy as np
 import pandas as pd
+from numpy.typing import NDArray
 
 from src.features.preprocessor import TelcoPreprocessor
 
@@ -13,25 +15,26 @@ logger = logging.getLogger(__name__)
 
 
 class ProductionChurnModel:
-    def __init__(self, model: object, preprocessor: TelcoPreprocessor, threshold: float = 0.5) -> None:
+    def __init__(self, model: Any, preprocessor: TelcoPreprocessor, threshold: float = 0.5) -> None:
         self.model = model
         self.preprocessor = preprocessor
         self.threshold = threshold
-        self.metadata: dict[str, object] = {
+        self.metadata: dict[str, Any] = {
             "created_at": datetime.now().isoformat(),
             "threshold": threshold,
             "model_type": type(model).__name__,
             "feature_names": preprocessor.feature_names,
         }
 
-    def predict(self, X: pd.DataFrame) -> np.ndarray:
+    def predict(self, X: pd.DataFrame) -> NDArray[np.int_]:
         proba = self.predict_proba(X)
         return (proba[:, 1] >= self.threshold).astype(int)
 
-    def predict_proba(self, X: pd.DataFrame) -> np.ndarray:
-        return self.model.predict_proba(X)  # type: ignore[attr-defined]
+    def predict_proba(self, X: pd.DataFrame) -> NDArray[np.float64]:
+        result: NDArray[np.float64] = self.model.predict_proba(X)
+        return result
 
-    def predict_single(self, customer_data: dict[str, object]) -> dict[str, object]:
+    def predict_single(self, customer_data: dict[str, Any]) -> dict[str, Any]:
         df = pd.DataFrame([customer_data])
         df = self.preprocessor.clean_data(df)
         df = self.preprocessor.engineer_features(df)
@@ -45,7 +48,7 @@ class ProductionChurnModel:
             df[feature] = 0
         df = df[self.preprocessor.feature_names]
 
-        proba: np.ndarray = self.predict_proba(df)[0]
+        proba: NDArray[np.float64] = self.predict_proba(df)[0]
         prediction = int(self.predict(df)[0])
 
         return {
@@ -58,7 +61,7 @@ class ProductionChurnModel:
     def get_feature_importance(self, top_n: int = 10) -> dict[str, float]:
         if not hasattr(self.model, "feature_importances_"):
             return {}
-        importances: np.ndarray = self.model.feature_importances_  # type: ignore[attr-defined]
+        importances: NDArray[np.float64] = self.model.feature_importances_
         indices = np.argsort(importances)[::-1][:top_n]
         return {self.preprocessor.feature_names[i]: float(importances[i]) for i in indices}
 
@@ -83,7 +86,7 @@ def create_production_model(
     preprocessor_path: str,
     optimal_threshold: float = 0.38,
 ) -> ProductionChurnModel:
-    model = joblib.load(model_path)
+    model: Any = joblib.load(model_path)
     preprocessor: TelcoPreprocessor = joblib.load(preprocessor_path)
     prod_model = ProductionChurnModel(model, preprocessor, optimal_threshold)
     logger.info(
